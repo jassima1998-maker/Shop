@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="المبيعات">
+<title>المبيعات</title>
+<style>
+*{box-sizing:border-box;font-family:-apple-system,Helvetica,Arial,sans-serif}
+body{margin:0;background:#f2f2f7;color:#111}
+nav{display:flex;position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;z-index:5}
+nav button{flex:1;padding:14px 4px;border:0;background:none;font-size:15px}
+nav button.on{color:#0a84ff;border-bottom:3px solid #0a84ff;font-weight:bold}
+section{display:none;padding:14px;max-width:800px;margin:auto}
+section.on{display:block}
+input,select{width:100%;padding:11px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;font-size:16px}
+button.btn{width:100%;padding:13px;border:0;border-radius:10px;background:#0a84ff;color:#fff;font-size:16px;margin:4px 0}
+button.red{background:#ff3b30}
+button.gray{background:#8e8e93}
+.card{background:#fff;border-radius:12px;padding:12px;margin:8px 0}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:6px;border-bottom:1px solid #eee;text-align:right;font-size:14px}
+.big{font-size:20px;font-weight:bold}
+.green{color:#1a9e3f}.redt{color:#ff3b30}
+#invoice{display:none}
+@media print{
+  body *{visibility:hidden}
+  #invoice,#invoice *{visibility:visible}
+  #invoice{display:block;position:absolute;top:0;left:0;width:100%;background:#fff;padding:20px}
+}
+#invoice h1{text-align:center;margin:0}
+#invoice .sub{text-align:center;color:#555;margin-bottom:14px}
+#invoice th,#invoice td{border-bottom:1px solid #ccc}
+#invoice .tot td{font-weight:bold;border-top:2px solid #000}
+</style>
+</head>
+<body>
+
+<nav>
+<button class="on" onclick="tab(0)">البيع</button>
+<button onclick="tab(1)">المخزون</button>
+<button onclick="tab(2)">المصاريف</button>
+<button onclick="tab(3)">التقارير</button>
+</nav>
+
+<section id="t0" class="on">
+<div class="card">
+<label>اسم العميل / Customer</label>
+<input id="cust" placeholder="اختياري">
+<label>المنتج / Product</label>
+<select id="selProd"></select>
+<label>الكمية / Qty</label>
+<input id="qty" type="number" value="1" min="1">
+<button class="btn" onclick="addLine()">إضافة للفاتورة</button>
+</div>
+<div class="card">
+<table id="cartTbl"></table>
+<label>رسوم التوصيل / Delivery fee</label>
+<input id="deliv" type="number" value="0" min="0" oninput="renderCart()">
+<div class="row"><span>الإجمالي / Total</span><span class="big" id="grand">0</span></div>
+</div>
+<button class="btn" onclick="finishSale()">حفظ وطباعة الفاتورة</button>
+<button class="btn red" onclick="cart=[];renderCart()">مسح الفاتورة</button>
+</section>
+
+<section id="t1">
+<div class="card">
+<label>اسم المنتج / Product name</label>
+<input id="pName">
+<label>سعر التكلفة / Cost price</label>
+<input id="pCost" type="number" step="0.01">
+<label>سعر البيع / Selling price</label>
+<input id="pPrice" type="number" step="0.01">
+<label>الكمية / Quantity</label>
+<input id="pQty" type="number">
+<button class="btn" onclick="saveProd()">حفظ المنتج</button>
+</div>
+<div id="prodList"></div>
+</section>
+
+<section id="t2">
+<div class="card">
+<label>وصف المصروف / Description</label>
+<input id="eDesc">
+<label>المبلغ / Amount</label>
+<input id="eAmt" type="number" step="0.01">
+<button class="btn" onclick="saveExp()">حفظ المصروف</button>
+</div>
+<div id="expList"></div>
+</section>
+
+<section id="t3">
+<div class="card">
+<div class="row"><span>إجمالي المبيعات</span><span class="big" id="rSales">0</span></div>
+<div class="row"><span>تكلفة البضاعة المباعة</span><span class="big" id="rCost">0</span></div>
+<div class="row"><span>المصاريف</span><span class="big" id="rExp">0</span></div>
+<hr>
+<div class="row"><span>صافي الربح</span><span class="big" id="rNet">0</span></div>
+</div>
+<div id="saleList"></div>
+<button class="btn red" onclick="resetAll()">مسح كل البيانات</button>
+</section>
+
+<div id="invoice"></div>
+
+<script>
+var DB = JSON.parse(localStorage.getItem('shopdb') || '{"prods":[],"exps":[],"sales":[],"inv":1000}');
+var cart = [];
+var editId = null;
+
+function save(){ localStorage.setItem('shopdb', JSON.stringify(DB)); }
+function $(id){ return document.getElementById(id); }
+function n(v){ return Math.round((+v + Number.EPSILON) * 100) / 100; }
+
+function tab(i){
+  var s = document.querySelectorAll('section'), b = document.querySelectorAll('nav button');
+  for (var k = 0; k < s.length; k++){ s[k].className = (k == i) ? 'on' : ''; b[k].className = (k == i) ? 'on' : ''; }
+  refresh();
+}
+
+function refresh(){ renderSelect(); renderProds(); renderCart(); renderExps(); renderReport(); }
+
+/* ---------- المخزون ---------- */
+function saveProd(){
+  var name = $('pName').value.trim();
+  if (!name){ alert('اكتب اسم المنتج'); return; }
+  var p = { id: editId || Date.now(), name: name, cost: n($('pCost').value || 0), price: n($('pPrice').value || 0), qty: parseInt($('pQty').value || 0) };
+  if (editId){
+    for (var i = 0; i < DB.prods.length; i++){ if (DB.prods[i].id == editId) DB.prods[i] = p; }
+  } else { DB.prods.push(p); }
+  editId = null;
+  $('pName').value = ''; $('pCost').value = ''; $('pPrice').value = ''; $('pQty').value = '';
+  save(); refresh();
+}
+
+function editProd(id){
+  for (var i = 0; i < DB.prods.length; i++){
+    if (DB.prods[i].id == id){
+      var p = DB.prods[i]; editId = id;
+      $('pName').value = p.name; $('pCost').value = p.cost; $('pPrice').value = p.price; $('pQty').value = p.qty;
+      window.scrollTo(0, 0);
+    }
+  }
+}
+
+function delProd(id){
+  if (!confirm('حذف المنتج؟')) return;
+  DB.prods = DB.prods.filter(function(p){ return p.id != id; });
+  save(); refresh();
+}
+
+function renderProds(){
+  var h = '';
+  DB.prods.forEach(function(p){
+    h += '<div class="card"><div class="row"><b>' + p.name + '</b><span>الكمية: ' + p.qty + '</span></div>' +
+         '<div class="row"><span>تكلفة: ' + p.cost + '</span><span>بيع: ' + p.price + '</span></div>' +
+         '<div class="row"><button class="btn gray" onclick="editProd(' + p.id + ')">تعديل</button>' +
+         '<button class="btn red" onclick="delProd(' + p.id + ')">حذف</button></div></div>';
+  });
+  $('prodList').innerHTML = h || '<p>لا توجد منتجات بعد</p>';
+}
+
+function renderSelect(){
+  var h = '';
+  DB.prods.forEach(function(p){ h += '<option value="' + p.id + '">' + p.name + ' (' + p.qty + ') - ' + p.price + '</option>'; });
+  $('selProd').innerHTML = h;
+}
+
+/* ---------- البيع ---------- */
+function addLine(){
+  var id = $('selProd').value, q = parseInt($('qty').value || 0);
+  if (!id || q < 1) return;
+  var p = DB.prods.filter(function(x){ return x.id == id; })[0];
+  var already = 0;
+  cart.forEach(function(c){ if (c.id == id) already += c.qty; });
+  if (p.qty < already + q){ alert('الكمية غير كافية في المخزون'); return; }
+  cart.push({ id: p.id, name: p.name, price: p.price, cost: p.cost, qty: q });
+  $('qty').value = 1;
+  renderCart();
+}
+
+function removeLine(i){ cart.splice(i, 1); renderCart(); }
+
+function cartTotal(){
+  var t = 0;
+  cart.forEach(function(c){ t += c.price * c.qty; });
+  return n(t + n($('deliv').value || 0));
+}
+
+function renderCart(){
+  var h = '<tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>المجموع</th><th></th></tr>';
+  cart.forEach(function(c, i){
+    h += '<tr><td>' + c.name + '</td><td>' + c.qty + '</td><td>' + c.price + '</td><td>' + n(c.price * c.qty) + '</td><td><button onclick="removeLine(' + i + ')">x</button></td></tr>';
+  });
+  $('cartTbl').innerHTML = h;
+  $('grand').innerHTML = cartTotal();
+}
+
+/* ---------- المصاريف ---------- */
+function saveExp(){
+  var d = $('eDesc').value.trim(), a = n($('eAmt').value || 0);
+  if (!d || !a){ alert('اكتب الوصف والمبلغ'); return; }
+  DB.exps.push({ id: Date.now(), date: new Date().toISOString().slice(0, 10), desc: d, amt: a });
+  $('eDesc').value = ''; $('eAmt').value = '';
+  save(); refresh();
+}
+
+function delExp(id){
+  DB.exps = DB.exps.filter(function(e){ return e.id != id; });
+  save(); refresh();
+}
+
+function renderExps(){
+  var h = '';
+  DB.exps.slice().reverse().forEach(function(e){
+    h += '<div class="card row"><span>' + e.date + ' - ' + e.desc + '</span><span>' + e.amt + ' <button onclick="delExp(' + e.id + ')">x</button></span></div>';
+  });
+  $('expList').innerHTML = h || '<p>لا توجد مصاريف بعد</p>';
+}
+
+/* ---------- التقارير ---------- */
+function renderReport(){
+  var sales = 0, cost = 0, exp = 0;
+  DB.sales.forEach(function(s){ sales += s.total; cost += s.cost; });
+  DB.exps.forEach(function(e){ exp += e.amt; });
+  $('rSales').innerHTML = n(sales);
+  $('rCost').innerHTML = n(cost);
+  $('rExp').innerHTML = n(exp);
+  var net = n(sales - cost - exp);
+  $('rNet').innerHTML = net;
+  $('rNet').className = 'big ' + (net >= 0 ? 'green' : 'redt');
+  var h = '';
+  DB.sales.slice().reverse().forEach(function(s){
+    h += '<div class="card row"><span>#' + s.no + ' - ' + s.date + ' - ' + (s.cust || '') + '</span><span>' + s.total + ' <button onclick="reprint(' + s.no + ')">طباعة</button></span></div>';
+  });
+  $('saleList').innerHTML = h;
+}
+
+function resetAll(){
+  if (!confirm('سيتم مسح كل البيانات نهائياً. متأكد؟')) return;
+  localStorage.removeItem('shopdb');
+  location.reload();
+}
+
+refresh();
+</script>
+
+<script>
+var SHOP = { nameAr: 'اسم المحل', nameEn: 'Shop Name', phone: '05XXXXXXXX' };
+
+function finishSale(){
+  if (!cart.length){ alert('الفاتورة فارغة'); return; }
+  var deliv = n($('deliv').value || 0);
+  var sub = 0, cost = 0;
+  cart.forEach(function(c){ sub += c.price * c.qty; cost += c.cost * c.qty; });
+  var sale = {
+    no: DB.inv++,
+    date: new Date().toISOString().slice(0, 10),
+    cust: $('cust').value.trim(),
+    items: cart.slice(),
+    sub: n(sub),
+    deliv: deliv,
+    total: n(sub + deliv),
+    cost: n(cost)
+  };
+  cart.forEach(function(c){
+    DB.prods.forEach(function(p){ if (p.id == c.id) p.qty -= c.qty; });
+  });
+  DB.sales.push(sale);
+  save();
+  cart = [];
+  $('deliv').value = 0;
+  $('cust').value = '';
+  refresh();
+  printInvoice(sale);
+}
+
+function reprint(no){
+  var s = DB.sales.filter(function(x){ return x.no == no; })[0];
+  if (s) printInvoice(s);
+}
+
+function printInvoice(s){
+  var rows = '';
+  s.items.forEach(function(c){
+    rows += '<tr><td>' + c.name + '</td><td>' + c.qty + '</td><td>' + c.price + '</td><td>' + n(c.price * c.qty) + '</td></tr>';
+  });
+  var h = '<h1>' + SHOP.nameAr + ' | ' + SHOP.nameEn + '</h1>' +
+    '<div class="sub">' + SHOP.phone + '</div>' +
+    '<div class="row"><span>فاتورة رقم / Invoice No: ' + s.no + '</span><span>التاريخ / Date: ' + s.date + '</span></div>' +
+    (s.cust ? '<div>العميل / Customer: ' + s.cust + '</div>' : '') +
+    '<br><table><tr><th>المنتج<br>Item</th><th>الكمية<br>Qty</th><th>السعر<br>Price</th><th>المجموع<br>Amount</th></tr>' + rows +
+    '<tr><td colspan="3">المجموع الفرعي / Subtotal</td><td>' + s.sub + '</td></tr>' +
+    (s.deliv > 0 ? '<tr><td colspan="3">رسوم التوصيل / Delivery</td><td>' + s.deliv + '</td></tr>' : '') +
+    '<tr class="tot"><td colspan="3">الإجمالي / Total</td><td>' + s.total + '</td></tr></table>' +
+    '<p class="sub" style="margin-top:24px">شكراً لتعاملكم معنا | Thank you for your business</p>';
+  $('invoice').innerHTML = h;
+  setTimeout(function(){ window.print(); }, 300);
+}
+</script>
+</body>
+</html>
