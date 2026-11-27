@@ -287,7 +287,7 @@ function printInvoice(s){
   s.items.forEach(function(c){
     rows += '<tr><td>' + c.name + '</td><td>' + c.qty + '</td><td>' + c.price + '</td><td>' + n(c.price * c.qty) + '</td></tr>';
   });
-  var h = (SHOP.logo ? '<div style="text-align:center"><img src="' + SHOP.logo + '" style="max-height:90px;max-width:220px"></div>' : '') + '<h1>' + SHOP.nameAr + ' | ' + SHOP.nameEn + '</h1>' +
+  var h = (SHOP.logo ? '<div style="text-align:center"><img src="' + SHOP.logo + '" style="max-height:160px;max-width:380px"></div>' : '') + '<h1>' + SHOP.nameAr + ' | ' + SHOP.nameEn + '</h1>' +
     '<div class="sub">' + SHOP.phone + '</div>' +
     '<div class="row"><span>فاتورة رقم / Invoice No: ' + s.no + '</span><span>التاريخ / Date: ' + s.date + '</span></div>' +
     (s.cust ? '<div>العميل / Customer: ' + s.cust + '</div>' : '') +
